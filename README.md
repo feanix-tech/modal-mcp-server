@@ -1,12 +1,12 @@
 # Modal MCP Server
 
-An MCP server implementation for interacting with Modal volumes and deploying Modal applications from within Cursor.
+An MCP server that provides comprehensive access to the [Modal](https://modal.com) platform — covering app deployment, container management, volumes, secrets, environments, dicts, queues, and network file systems.
 
 ## Installation
 
 1. Clone this repository:
 ```bash
-git clone https://github.com/smehmood/modal-mcp-server.git
+git clone https://github.com/feanix-tech/modal-mcp-server.git
 cd modal-mcp-server
 ```
 
@@ -17,7 +17,7 @@ uv sync
 
 ## Configuration
 
-To use this MCP server in Cursor, add the following configuration to your `~/.cursor/mcp.json`:
+Add the following to your MCP client configuration (e.g. `~/.cursor/mcp.json` for Cursor, or the equivalent for your editor):
 
 ```json
 {
@@ -40,94 +40,125 @@ Replace `/path/to/modal-mcp-server` with the absolute path to your cloned reposi
 - Python 3.11 or higher
 - `uv` package manager
 - Modal CLI configured with valid credentials
-- For Modal deploy support:
-  - Project being deployed must use `uv` for dependency management
-  - Modal must be installed in the project's virtual environment
+- For `deploy_modal_app`: the target project must use `uv` and have `modal` installed in its venv
 
 ## Supported Tools
 
-### Modal Volume Operations
+The server exposes **42 tools** across 9 categories. Most tools that target a specific environment accept an optional `environment` parameter.
 
-1. **List Modal Volumes** (`list_modal_volumes`)
-   - Lists all Modal volumes in your environment
-   - Returns JSON-formatted volume information
-   - Parameters: None
+### Deployment
 
-2. **List Volume Contents** (`list_modal_volume_contents`)
-   - Lists files and directories in a Modal volume
-   - Parameters:
-     - `volume_name`: Name of the Modal volume
-     - `path`: Path within volume (default: "/")
+| Tool | Description |
+|------|-------------|
+| `deploy_modal_app` | Deploy a Modal application from an absolute file path |
 
-3. **Copy Files** (`copy_modal_volume_files`)
-   - Copies files within a Modal volume
-   - Parameters:
-     - `volume_name`: Name of the Modal volume
-     - `paths`: List of paths where last path is destination
-   - Example: `["source.txt", "dest.txt"]` or `["file1.txt", "file2.txt", "dest_dir/"]`
+### App Management
 
-4. **Remove Files** (`remove_modal_volume_file`)
-   - Deletes a file or directory from a Modal volume
-   - Parameters:
-     - `volume_name`: Name of the Modal volume
-     - `remote_path`: Path to file/directory to delete
-     - `recursive`: Boolean flag for recursive deletion (default: false)
+| Tool | Description |
+|------|-------------|
+| `list_modal_apps` | List deployed/running/recently stopped apps |
+| `get_modal_app_logs` | Fetch logs for an app (with configurable timeout) |
+| `stop_modal_app` | Stop a running app |
+| `get_modal_app_history` | Show deployment history for an app |
+| `rollback_modal_app` | Redeploy a previous version of an app |
 
-5. **Upload Files** (`put_modal_volume_file`)
-   - Uploads a file or directory to a Modal volume
-   - Parameters:
-     - `volume_name`: Name of the Modal volume
-     - `local_path`: Path to local file/directory to upload
-     - `remote_path`: Path in volume to upload to (default: "/")
-     - `force`: Boolean flag to overwrite existing files (default: false)
+### Container Management
 
-6. **Download Files** (`get_modal_volume_file`)
-   - Downloads files from a Modal volume
-   - Parameters:
-     - `volume_name`: Name of the Modal volume
-     - `remote_path`: Path to file/directory in volume to download
-     - `local_destination`: Local path to save downloaded files (default: current directory)
-     - `force`: Boolean flag to overwrite existing files (default: false)
-   - Note: Use "-" as `local_destination` to write file contents to stdout
+| Tool | Description |
+|------|-------------|
+| `list_modal_containers` | List all currently running containers |
+| `get_modal_container_logs` | Fetch logs for a container (with configurable timeout) |
+| `exec_modal_container` | Execute a command inside a running container |
+| `stop_modal_container` | Stop a running container |
 
-### Modal Deployment
+### Secret Management
 
-1. **Deploy Modal App** (`deploy_modal_app`)
-   - Deploys a Modal application
-   - Parameters:
-     - `absolute_path_to_app`: Absolute path to the Modal application file
-   - Note: The project containing the Modal app must:
-     - Use `uv` for dependency management
-     - Have the `modal` CLI installed in its virtual environment
+| Tool | Description |
+|------|-------------|
+| `list_modal_secrets` | List all published secrets |
+| `create_modal_secret` | Create a secret with key-value pairs (supports `force` overwrite) |
+
+### Volume Management
+
+| Tool | Description |
+|------|-------------|
+| `list_modal_volumes` | List all volumes |
+| `list_modal_volume_contents` | List files/directories in a volume |
+| `copy_modal_volume_files` | Copy files within a volume |
+| `put_modal_volume_file` | Upload a local file/directory to a volume |
+| `get_modal_volume_file` | Download files from a volume |
+| `remove_modal_volume_file` | Delete a file or directory from a volume |
+| `create_modal_volume` | Create a new persistent volume |
+| `delete_modal_volume` | Delete a volume |
+| `rename_modal_volume` | Rename a volume |
+
+### Environment Management
+
+| Tool | Description |
+|------|-------------|
+| `list_modal_environments` | List all environments in the workspace |
+| `create_modal_environment` | Create a new environment |
+| `delete_modal_environment` | Delete an environment (irreversible) |
+| `update_modal_environment` | Rename or change the web suffix of an environment |
+
+### Dict Management
+
+| Tool | Description |
+|------|-------------|
+| `list_modal_dicts` | List all named Dicts |
+| `create_modal_dict` | Create a new Dict |
+| `delete_modal_dict` | Delete a Dict and all its data |
+| `clear_modal_dict` | Clear all entries from a Dict |
+| `get_modal_dict_value` | Get the value for a specific key |
+| `list_modal_dict_items` | List entries in a Dict (supports `n` limit or `show_all`) |
+
+### Queue Management
+
+| Tool | Description |
+|------|-------------|
+| `list_modal_queues` | List all named Queues |
+| `create_modal_queue` | Create a new Queue |
+| `delete_modal_queue` | Delete a Queue and all its data |
+| `clear_modal_queue` | Clear a Queue (optionally a specific partition) |
+| `peek_modal_queue` | Peek at the next N items without removing them |
+| `get_modal_queue_length` | Get the length of a Queue (supports partition and total) |
+
+### Network File System (NFS) Management
+
+| Tool | Description |
+|------|-------------|
+| `list_modal_nfs` | List all network file systems |
+| `create_modal_nfs` | Create a new NFS |
+| `delete_modal_nfs` | Delete an NFS |
+| `list_modal_nfs_contents` | List files/directories in an NFS |
+| `put_modal_nfs_file` | Upload a file/directory to an NFS |
+| `get_modal_nfs_file` | Download a file from an NFS |
+| `remove_modal_nfs_file` | Delete a file or directory from an NFS |
 
 ## Response Format
 
-All tools return responses in a standardized format, with slight variations depending on the operation type:
+All tools return a dict with a standardized structure:
 
 ```python
-# JSON operations (list volumes, list contents):
-{
-    "success": True,
-    "data": {...}  # JSON data from Modal CLI
-}
+# Success — JSON operations (list, history, etc.):
+{"success": True, "volumes": [...]}  # key varies by tool
 
-# File operations (put, get, copy, remove):
-{
-    "success": True,
-    "message": "Operation successful message",
-    "command": "executed command string",
-    "stdout": "command output",  # if any
-    "stderr": "error output"     # if any
-}
+# Success — mutation operations (create, delete, etc.):
+{"success": True, "message": "...", "command": "..."}
 
-# Error case (all operations):
-{
-    "success": False,
-    "error": "Error message describing what went wrong",
-    "command": "executed command string",  # for file operations
-    "stdout": "command output",  # if available
-    "stderr": "error output"     # if available
-}
+# Success — streaming commands (logs) that hit the timeout:
+{"success": True, "timed_out": True, "stdout": "...", "stderr": "..."}
+
+# Failure:
+{"success": False, "error": "...", "stdout": "...", "stderr": "..."}
+```
+
+## Development
+
+Run the test suite:
+
+```bash
+uv run pytest tests/ -v
 ```
 
 ## Contributing
