@@ -44,7 +44,7 @@ Replace `/path/to/modal-mcp-server` with the absolute path to your cloned reposi
 
 ## Supported Tools
 
-The server exposes **42 tools** across 9 categories. Most tools that target a specific environment accept an optional `environment` parameter.
+The server exposes **44 tools** across 9 categories. Most tools that target a specific environment accept an optional `environment` parameter.
 
 ### Deployment
 

@@ -1,9 +1,9 @@
 """MCP server for deploying Modal applications."""
 import logging
 import os
-from typing import Any, Optional, List, Dict
 import subprocess
 import json
+from typing import Any, Dict, List, Optional
 
 from mcp.server.fastmcp import FastMCP
 
@@ -11,7 +11,23 @@ logger = logging.getLogger(__name__)
 
 mcp = FastMCP("modal-deploy")
 
-def run_modal_command(command: list[str], uv_directory: Optional[str] = None, timeout: Optional[int] = None) -> dict[str, Any]:
+
+def _validate_positive_timeout(timeout: int) -> Optional[dict[str, Any]]:
+    """Validate timeout values used for streaming Modal commands."""
+    if timeout <= 0:
+        return {
+            "success": False,
+            "error": f"Invalid timeout: {timeout}. Timeout must be a positive integer.",
+        }
+    return None
+
+
+def run_modal_command(
+    command: list[str],
+    uv_directory: Optional[str] = None,
+    timeout: Optional[int] = None,
+    display_command: Optional[list[str]] = None,
+) -> dict[str, Any]:
     """Run a Modal CLI command and return the result.
 
     Args:
@@ -21,13 +37,27 @@ def run_modal_command(command: list[str], uv_directory: Optional[str] = None, ti
             process is killed and any output captured so far is returned with
             a ``timed_out`` flag.  Useful for streaming commands like
             ``modal app logs`` that never terminate on their own.
+        display_command: Optional display-safe command. When provided, this
+            value is used for logging and returned ``command`` fields while
+            still executing ``command``.
     """
+    # uv_directory is necessary for modal deploy, since deploying the app requires
+    # the app to use the uv venv
+    prefix = ["uv", "run", f"--directory={uv_directory}"] if uv_directory else []
+    executable_command = [*prefix, *command]
+    display_parts = [*prefix, *(display_command if display_command is not None else command)]
+    display_command_string = " ".join(display_parts)
+
+    if timeout is not None:
+        timeout_validation_error = _validate_positive_timeout(timeout)
+        if timeout_validation_error:
+            timeout_validation_error["command"] = display_command_string
+            return timeout_validation_error
+
     try:
-        # uv_directory is necessary for modal deploy, since deploying the app requires the app to use the uv venv
-        command = (["uv", "run", f"--directory={uv_directory}"] if uv_directory else []) + command
-        logger.info(f"Running command: {' '.join(command)}")
+        logger.info(f"Running command: {display_command_string}")
         result = subprocess.run(
-            command,
+            executable_command,
             capture_output=True,
             text=True,
             check=True,
@@ -37,7 +67,7 @@ def run_modal_command(command: list[str], uv_directory: Optional[str] = None, ti
             "success": True,
             "stdout": result.stdout,
             "stderr": result.stderr,
-            "command": ' '.join(command)
+            "command": display_command_string,
         }
     except subprocess.TimeoutExpired as e:
         return {
@@ -45,15 +75,26 @@ def run_modal_command(command: list[str], uv_directory: Optional[str] = None, ti
             "timed_out": True,
             "stdout": (e.stdout or "") if isinstance(e.stdout, str) else (e.stdout or b"").decode("utf-8", errors="replace"),
             "stderr": (e.stderr or "") if isinstance(e.stderr, str) else (e.stderr or b"").decode("utf-8", errors="replace"),
-            "command": ' '.join(command)
+            "command": display_command_string,
         }
     except subprocess.CalledProcessError as e:
+        error_message = (
+            f"Command '{display_command_string}' returned non-zero exit status {e.returncode}."
+        )
+        return {
+            "success": False,
+            "error": error_message,
+            "stdout": e.stdout,
+            "stderr": e.stderr,
+            "command": display_command_string,
+        }
+    except FileNotFoundError as e:
         return {
             "success": False,
             "error": str(e),
-            "stdout": e.stdout,
-            "stderr": e.stderr,
-            "command": ' '.join(command)
+            "stdout": "",
+            "stderr": "",
+            "command": display_command_string,
         }
 
 def handle_json_response(result: Dict[str, Any], error_prefix: str) -> Dict[str, Any]:
@@ -623,13 +664,17 @@ async def create_modal_secret(secret_name: str, key_values: Dict[str, str], envi
     """
     try:
         command = ["modal", "secret", "create", secret_name]
+        display_command = ["modal", "secret", "create", secret_name]
         for key, value in key_values.items():
             command.append(f"{key}={value}")
+            display_command.append(f"{key}=<REDACTED>")
         if environment:
             command.extend(["--env", environment])
+            display_command.extend(["--env", environment])
         if force:
             command.append("--force")
-        result = run_modal_command(command)
+            display_command.append("--force")
+        result = run_modal_command(command, display_command=display_command)
         response = {
             "success": result["success"],
             "command": result["command"]

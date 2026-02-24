@@ -159,6 +159,54 @@ class TestRunModalCommand:
         call_kwargs = mock_subprocess_run.call_args[1]
         assert call_kwargs["timeout"] is None
 
+    @patch("modal_mcp.server.subprocess.run")
+    def test_invalid_timeout_returns_failure_without_spawning_process(
+        self,
+        mock_subprocess_run: Any,
+    ) -> None:
+        result = run_modal_command(["modal", "app", "logs", "my-app"], timeout=0)
+
+        assert result["success"] is False
+        assert "Invalid timeout" in result["error"]
+        assert result["command"] == "modal app logs my-app"
+        mock_subprocess_run.assert_not_called()
+
+    @patch("modal_mcp.server.subprocess.run")
+    def test_file_not_found_returns_standardized_failure(
+        self,
+        mock_subprocess_run: Any,
+    ) -> None:
+        mock_subprocess_run.side_effect = FileNotFoundError("[Errno 2] No such file or directory: 'modal'")
+
+        result = run_modal_command(["modal", "volume", "list"])
+
+        assert result["success"] is False
+        assert "No such file or directory" in result["error"]
+        assert result["stdout"] == ""
+        assert result["stderr"] == ""
+
+    @patch("modal_mcp.server.subprocess.run")
+    def test_called_process_error_uses_redacted_display_command(
+        self,
+        mock_subprocess_run: Any,
+    ) -> None:
+        mock_subprocess_run.side_effect = subprocess.CalledProcessError(
+            returncode=1,
+            cmd=["modal", "secret", "create", "my-secret", "KEY=actual-value"],
+            output="",
+            stderr="error",
+        )
+
+        result = run_modal_command(
+            ["modal", "secret", "create", "my-secret", "KEY=actual-value"],
+            display_command=["modal", "secret", "create", "my-secret", "KEY=<REDACTED>"],
+        )
+
+        assert result["success"] is False
+        assert "KEY=<REDACTED>" in result["error"]
+        assert "KEY=actual-value" not in result["error"]
+        assert result["command"] == "modal secret create my-secret KEY=<REDACTED>"
+
 
 # ---------------------------------------------------------------------------
 # handle_json_response
@@ -463,9 +511,18 @@ class TestSecretManagement:
     async def test_create_secret(self) -> None:
         with patch(MOCK_PATH, return_value=_ok()) as mock:
             result = await create_modal_secret("my-secret", {"KEY": "val"})
-            mock.assert_called_once_with(
-                ["modal", "secret", "create", "my-secret", "KEY=val"]
-            )
+            mock.assert_called_once()
+            args = mock.call_args[0][0]
+            kwargs = mock.call_args[1]
+
+            assert args == ["modal", "secret", "create", "my-secret", "KEY=val"]
+            assert kwargs["display_command"] == [
+                "modal",
+                "secret",
+                "create",
+                "my-secret",
+                "KEY=<REDACTED>",
+            ]
             assert result["success"] is True
 
     @pytest.mark.asyncio
@@ -475,10 +532,18 @@ class TestSecretManagement:
                 "s", {"A": "1", "B": "2"}, environment="dev", force=True
             )
             args = mock.call_args[0][0]
+            kwargs = mock.call_args[1]
+            display_command = kwargs["display_command"]
+
             assert "--force" in args
             assert "--env" in args
             assert "A=1" in args
             assert "B=2" in args
+
+            assert "A=<REDACTED>" in display_command
+            assert "B=<REDACTED>" in display_command
+            assert "A=1" not in display_command
+            assert "B=2" not in display_command
 
 
 # ---------------------------------------------------------------------------
